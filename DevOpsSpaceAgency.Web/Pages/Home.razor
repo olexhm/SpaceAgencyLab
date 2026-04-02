@@ -1,0 +1,132 @@
+@page "/"
+@using DevOpsSpaceAgency.Shared.Models
+@using DevOpsSpaceAgency.Web.Services
+@inject SpaceApiClient ApiClient
+
+<PageTitle>Mission Control</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">DSA Mission Control</MudText>
+<MudText Typo="Typo.body1" Class="mb-6">Unified dashboard for astronauts, ISS tracking, NASA APOD, and simulated module health.</MudText>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+}
+
+@if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudCard Outlined="true" Class="h-100">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">ISS crew snapshot</MudText>
+                    <MudText Typo="Typo.h4">@_astronauts.Count astronaut(s)</MudText>
+                    @foreach (AstronautStatusRequest astronaut in _astronauts.Take(5))
+                    {
+                        <MudText Typo="Typo.body2">• @astronaut.DisplayName (@astronaut.Craft)</MudText>
+                    }
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/astronauts">Open astronauts</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Outlined="true" Class="h-100">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">ISS live position</MudText>
+                    <MudText Typo="Typo.body1">Latitude: @_position?.Latitude</MudText>
+                    <MudText Typo="Typo.body1">Longitude: @_position?.Longitude</MudText>
+                    <MudText Typo="Typo.caption">Updated: @LastPositionUpdate</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/iss-tracker">Open tracker</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Outlined="true" Class="h-100">
+                <MudCardMedia Image="@(_image?.Url ?? string.Empty)" Height="260" />
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">NASA APOD</MudText>
+                    <MudText Typo="Typo.body2">@ShortExplanation</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/todays-image">Open APOD</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Outlined="true" Class="h-100">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Module health</MudText>
+                    @foreach (ModuleStatusRequest module in _modules)
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.body2">@module.Name</MudText>
+                            <MudChip T="string" Color="@GetStatusColor(module.Status)" Variant="Variant.Filled">@module.Status</MudChip>
+                        </MudStack>
+                    }
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/modules">Open monitor</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private readonly List<AstronautStatusRequest> _astronauts = [];
+    private readonly List<ModuleStatusRequest> _modules = [];
+    private IssPositionRequest? _position;
+    private ImageRequest? _image;
+    private string? _errorMessage;
+    private bool _isLoading = true;
+
+    private string LastPositionUpdate => _position is null
+        ? "Unknown"
+        : DateTimeOffset.FromUnixTimeSeconds(_position.Timestamp).UtcDateTime.ToString("u");
+
+    private string ShortExplanation => string.IsNullOrWhiteSpace(_image?.Explanation)
+        ? "No description available."
+        : _image.Explanation.Length <= 180
+            ? _image.Explanation
+            : $"{_image.Explanation[..180]}...";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            IReadOnlyList<AstronautStatusRequest> astronauts = await ApiClient.GetAstronautsAsync();
+            IssPositionRequest position = await ApiClient.GetIssPositionAsync();
+            ImageRequest image = await ApiClient.GetTodayImageAsync();
+            IReadOnlyList<ModuleStatusRequest> modules = await ApiClient.GetModuleStatusesAsync();
+
+            _astronauts.AddRange(astronauts.Take(5));
+            _position = position;
+            _image = image;
+            _modules.AddRange(modules);
+        }
+        catch (Exception exception)
+        {
+            _errorMessage = $"Unable to load dashboard data: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "Online" => Color.Success,
+        "Degraded" => Color.Warning,
+        "Offline" => Color.Error,
+        _ => Color.Default,
+    };
+}

@@ -1,0 +1,52 @@
+@page "/todays-image"
+@using DevOpsSpaceAgency.Shared.Models
+@using DevOpsSpaceAgency.Web.Services
+@inject SpaceApiClient ApiClient
+
+<PageTitle>Astronomy Picture of the Day</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">NASA Astronomy Picture of the Day</MudText>
+<MudText Typo="Typo.body1" Class="mb-6">Served through the internal API so the frontend never talks directly to NASA.</MudText>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+}
+else if (_image is null)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudCard Outlined="true">
+        <MudCardMedia Image="@_image.Url" Height="420" />
+        <MudCardContent>
+            <MudText Typo="Typo.body1">@_image.Explanation</MudText>
+        </MudCardContent>
+        <MudCardActions>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="@_image.Url" Target="_blank">Open full image</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Info" OnClick="LoadImageAsync">Refresh</MudButton>
+        </MudCardActions>
+    </MudCard>
+}
+
+@code {
+    private ImageRequest? _image;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadImageAsync();
+
+    private async Task LoadImageAsync()
+    {
+        _errorMessage = null;
+
+        try
+        {
+            _image = await ApiClient.GetTodayImageAsync();
+        }
+        catch (Exception exception)
+        {
+            _errorMessage = $"Unable to load NASA APOD: {exception.Message}";
+        }
+    }
+}

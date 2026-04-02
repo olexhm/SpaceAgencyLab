@@ -1,0 +1,199 @@
+@page "/astronauts"
+@using DevOpsSpaceAgency.Shared.Models
+@using DevOpsSpaceAgency.Web.Services
+@inject SpaceApiClient ApiClient
+
+<PageTitle>Astronauts</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">Astronaut roster</MudText>
+<MudText Typo="Typo.body1" Class="mb-6">Manage the persisted astronaut list and compare it to the current ISS crew.</MudText>
+
+<MudStack Spacing="3">
+    <MudCard Outlined="true">
+        <MudCardContent>
+            <MudText Typo="Typo.h6">@(_isEditing ? "Edit astronaut" : "Add astronaut")</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editor.Name" Label="Official name" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editor.SecondaryName" Label="Secondary name" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editor.Craft" Label="Craft" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_editor.Gender" Label="Gender" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_editor.Country" Label="Country" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAstronautAsync">@(_isEditing ? "Save changes" : "Add astronaut")</MudButton>
+                @if (_isEditing)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ResetEditor">Cancel</MudButton>
+                }
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="LoadAstronautsAsync">Refresh list</MudButton>
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <MudAlert Severity="Severity.Success" Dense="true">@_successMessage</MudAlert>
+    }
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_astronauts.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No astronauts found in the database yet.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (AstronautStatusRequest astronaut in _astronauts)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Outlined="true" Class="h-100">
+                        <MudCardContent Class="d-flex flex-column gap-3">
+                            <div>
+                                <MudText Typo="Typo.h6">@astronaut.DisplayName</MudText>
+                                @if (!string.IsNullOrWhiteSpace(astronaut.SecondaryName))
+                                {
+                                    <MudText Typo="Typo.caption">Official name: @astronaut.Name</MudText>
+                                }
+                            </div>
+                            <MudList T="string" Dense="true">
+                                <MudListItem T="string">Craft: @astronaut.Craft</MudListItem>
+                                <MudListItem T="string">Gender: @(string.IsNullOrWhiteSpace(astronaut.Gender) ? "Unknown" : astronaut.Gender)</MudListItem>
+                                <MudListItem T="string">Country: @(string.IsNullOrWhiteSpace(astronaut.Country) ? "Unknown" : astronaut.Country)</MudListItem>
+                            </MudList>
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-auto">
+                                <MudChip T="string" Color="@(astronaut.IsCurrentlyOnIss ? Color.Success : Color.Default)" Variant="Variant.Filled">
+                                    @(astronaut.IsCurrentlyOnIss ? "Currently on ISS" : "Stored only")
+                                </MudChip>
+                                <MudSpacer />
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => BeginEdit(astronaut)">Edit</MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => DeleteAstronautAsync(astronaut.Id)">Delete</MudButton>
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudStack>
+
+@code {
+    private readonly List<AstronautStatusRequest> _astronauts = [];
+    private PersonRequest _editor = CreateEmptyPerson();
+    private string? _errorMessage;
+    private string? _successMessage;
+    private bool _isEditing;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAstronautsAsync();
+
+    private async Task LoadAstronautsAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            IReadOnlyList<AstronautStatusRequest> astronauts = await ApiClient.GetAstronautsAsync();
+            _astronauts.Clear();
+            _astronauts.AddRange(astronauts);
+        }
+        catch (Exception exception)
+        {
+            _errorMessage = $"Unable to load astronauts right now: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAstronautAsync()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_editor.Name) || string.IsNullOrWhiteSpace(_editor.Craft))
+        {
+            _errorMessage = "Official name and craft are required.";
+            return;
+        }
+
+        HttpResponseMessage response = _isEditing
+            ? await ApiClient.UpdateAstronautAsync(_editor)
+            : await ApiClient.CreateAstronautAsync(_editor);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _errorMessage = await response.Content.ReadAsStringAsync();
+            return;
+        }
+
+        _successMessage = _isEditing ? "Astronaut updated." : "Astronaut added.";
+        ResetEditor();
+        await LoadAstronautsAsync();
+    }
+
+    private void BeginEdit(AstronautStatusRequest astronaut)
+    {
+        _editor = new PersonRequest
+        {
+            Id = astronaut.Id,
+            Name = astronaut.Name,
+            SecondaryName = astronaut.SecondaryName,
+            Craft = astronaut.Craft,
+            Gender = astronaut.Gender,
+            Country = astronaut.Country,
+        };
+        _isEditing = true;
+        _errorMessage = null;
+        _successMessage = null;
+    }
+
+    private async Task DeleteAstronautAsync(int astronautId)
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        HttpResponseMessage response = await ApiClient.DeleteAstronautAsync(astronautId);
+        if (!response.IsSuccessStatusCode)
+        {
+            _errorMessage = await response.Content.ReadAsStringAsync();
+            return;
+        }
+
+        if (_editor.Id == astronautId)
+        {
+            ResetEditor();
+        }
+
+        _successMessage = "Astronaut deleted.";
+        await LoadAstronautsAsync();
+    }
+
+    private void ResetEditor()
+    {
+        _editor = CreateEmptyPerson();
+        _isEditing = false;
+    }
+
+    private static PersonRequest CreateEmptyPerson() => new();
+}

@@ -1,0 +1,80 @@
+@page "/modules"
+@using DevOpsSpaceAgency.Shared.Models
+@using DevOpsSpaceAgency.Web.Services
+@inject SpaceApiClient ApiClient
+
+<PageTitle>Module Monitor</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">Agency module monitor</MudText>
+<MudText Typo="Typo.body1" Class="mb-6">Checks the simulated module health endpoints described in the brief.</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4" OnClick="LoadStatusesAsync">Run checks</MudButton>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+}
+else if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudTable Items="_modules" Hover="true" Dense="true" Outlined="true">
+        <HeaderContent>
+            <MudTh>Module</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Response (ms)</MudTh>
+            <MudTh>Checked at</MudTh>
+            <MudTh>Error</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Module">@context.Name</MudTd>
+            <MudTd DataLabel="Description">@context.Description</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@GetStatusColor(context.Status)" Variant="Variant.Filled">@context.Status</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Response">@context.ResponseTimeMs</MudTd>
+            <MudTd DataLabel="Checked at">@context.CheckedAt.ToString("u")</MudTd>
+            <MudTd DataLabel="Error">@(string.IsNullOrWhiteSpace(context.ErrorMessage) ? "—" : context.ErrorMessage)</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private readonly List<ModuleStatusRequest> _modules = [];
+    private string? _errorMessage;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadStatusesAsync();
+
+    private async Task LoadStatusesAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            IReadOnlyList<ModuleStatusRequest> modules = await ApiClient.GetModuleStatusesAsync();
+            _modules.Clear();
+            _modules.AddRange(modules);
+        }
+        catch (Exception exception)
+        {
+            _errorMessage = $"Unable to run module checks: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "Online" => Color.Success,
+        "Degraded" => Color.Warning,
+        "Offline" => Color.Error,
+        _ => Color.Default,
+    };
+}

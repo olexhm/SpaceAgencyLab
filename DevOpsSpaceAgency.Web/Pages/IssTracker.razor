@@ -1,0 +1,71 @@
+@page "/iss-tracker"
+@using DevOpsSpaceAgency.Shared.Models
+@using DevOpsSpaceAgency.Web.Services
+@inject SpaceApiClient ApiClient
+
+<PageTitle>ISS Tracker</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">ISS live tracker</MudText>
+<MudText Typo="Typo.body1" Class="mb-6">Current latitude and longitude fetched from the API layer.</MudText>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+}
+else if (_position is null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle2">Latitude</MudText>
+                <MudText Typo="Typo.h4">@_position.Latitude</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle2">Longitude</MudText>
+                <MudText Typo="Typo.h4">@_position.Longitude</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle2">Timestamp (UTC)</MudText>
+                <MudText Typo="Typo.h6">@OffsetDateTime</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudChip T="string" Color="Color.Info" Variant="Variant.Filled">Status: @_position.Message</MudChip>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadPositionAsync">Refresh position</MudButton>
+    </MudStack>
+}
+
+@code {
+    private IssPositionRequest? _position;
+    private string? _errorMessage;
+
+    private string OffsetDateTime => _position is null
+        ? string.Empty
+        : DateTimeOffset.FromUnixTimeSeconds(_position.Timestamp).UtcDateTime.ToString("u");
+
+    protected override async Task OnInitializedAsync() => await LoadPositionAsync();
+
+    private async Task LoadPositionAsync()
+    {
+        _errorMessage = null;
+
+        try
+        {
+            _position = await ApiClient.GetIssPositionAsync();
+        }
+        catch (Exception exception)
+        {
+            _errorMessage = $"Unable to load ISS position: {exception.Message}";
+        }
+    }
+}
